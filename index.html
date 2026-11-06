@@ -6,6 +6,7 @@
     <title>ProofPass | Decentralized Identity & Verification</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -121,7 +122,7 @@
                 <span class="gradient-text">Reveal Nothing More.</span>
             </h1>
             <p class="mt-4 text-xl text-slate-400 max-w-3xl mx-auto mb-10">
-                Decentralized Identity and Credential Verification on BOT Chain. Issue, manage, and verify credentials with genuine zero-knowledge cryptographic proofs.
+                Decentralized Identity and Credential Verification on BOT Chain. Issue, manage, and verify credentials using on-chain hash commitments and hash-chain age proofs.
             </p>
             <div class="flex justify-center space-x-4">
                 <button class="btn-primary text-lg px-8 py-3" onclick="appState.connectWallet()">Launch App</button>
@@ -145,8 +146,8 @@
                         <div class="text-purple-500 mb-4">
                             <svg class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                         </div>
-                        <h3 class="text-xl font-bold mb-2">Zero-Knowledge Proofs</h3>
-                        <p class="text-slate-400 text-sm">Genuine cryptographic hash-chain proofs. Prove eligibility (e.g., age > 18) without revealing underlying sensitive data.</p>
+                        <h3 class="text-xl font-bold mb-2">Selective Disclosure</h3>
+                        <p class="text-slate-400 text-sm">Hash-chain range proofs let a holder prove age ≥ 18 without revealing their exact age. Only hashes go on-chain.</p>
                     </div>
                     <div class="panel">
                         <div class="text-green-500 mb-4">
@@ -168,7 +169,7 @@
                         <ul class="space-y-4">
                             <li class="flex items-center"><span class="text-blue-500 mr-2">✓</span> Student Identity & Course Completion</li>
                             <li class="flex items-center"><span class="text-blue-500 mr-2">✓</span> Professional Certificates & Memberships</li>
-                            <li class="flex items-center"><span class="text-blue-500 mr-2">✓</span> Age Eligibility (ZK Range Proofs)</li>
+                            <li class="flex items-center"><span class="text-blue-500 mr-2">✓</span> Age Eligibility (Hash-Chain Range Proofs)</li>
                             <li class="flex items-center"><span class="text-blue-500 mr-2">✓</span> Employment Verification</li>
                             <li class="flex items-center"><span class="text-blue-500 mr-2">✓</span> Event Access & Ticketing</li>
                         </ul>
@@ -179,10 +180,10 @@
                             ProofPass never stores sensitive personal information directly onchain. Instead, it utilizes cryptographic commitments: <code class="bg-slate-800 px-1 py-0.5 rounded text-xs">Commitment = Hash(Secret || Data)</code>. 
                         </p>
                         <p class="text-slate-400 text-sm leading-relaxed mb-4">
-                            For age verification, we implement a genuine cryptographic hash chain. The issuer hashes a random seed N times (Max Age). To prove age >= 18, the holder reveals the (Age - 18)th hash. The verifier hashes this 18 times and compares it to the public commitment.
+                            For age verification, we implement a genuine cryptographic hash chain. The issuer hashes a random seed <em>Age</em> times and commits the result. To prove age ≥ 18, the holder reveals the seed hashed (Age − 18) times; the verifier hashes it 18 more times and compares it to the on-chain commitment. Someone under 18 cannot produce that value.
                         </p>
                         <div class="p-3 bg-slate-800 rounded border border-slate-700">
-                            <span class="text-xs font-mono text-slate-300">Supported Network: BOT Chain Mainnet / Testnet</span>
+                            <span class="text-xs font-mono text-slate-300">Network: BOT Chain Mainnet (Chain ID 677)</span>
                         </div>
                     </div>
                 </div>
@@ -208,11 +209,20 @@
                     <div id="credentials-list" class="space-y-4">
                         <!-- Populated by JS -->
                     </div>
+                    <div class="panel">
+                        <h3 class="text-lg font-bold mb-2">Import Credential</h3>
+                        <p class="text-sm text-slate-400 mb-3">Paste the credential file your issuer sent you. It is stored only in this browser — keep a backup copy.</p>
+                        <textarea id="import-cred" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white font-mono text-xs h-24 mb-2" placeholder='{"holder":"0x...","data":{...},"salt":"0x...","commitment":"0x..."}'></textarea>
+                        <div class="flex gap-2">
+                            <button class="btn-primary flex-1" onclick="wallet.importCredential()">Import</button>
+                            <label class="btn-outline flex-1 text-center cursor-pointer">Load file<input type="file" accept=".json,application/json" class="hidden" onchange="this.files[0] && this.files[0].text().then(t => { document.getElementById('import-cred').value = t; this.value = ''; })"></label>
+                        </div>
+                    </div>
                 </div>
                 <div class="space-y-6">
                     <div class="panel">
-                        <h3 class="text-xl font-bold mb-4">Generate ZK Proof</h3>
-                        <p class="text-sm text-slate-400 mb-4">Generate a cryptographic proof to share with a verifier without exposing the raw data.</p>
+                        <h3 class="text-xl font-bold mb-4">Generate Proof</h3>
+                        <p class="text-sm text-slate-400 mb-4">Ownership proofs disclose the credential and are signed by your wallet. Age proofs reveal only that you are 18+.</p>
                         <div class="space-y-3">
                             <select id="proof-cred-select" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white">
                                 <option value="">Select Credential...</option>
@@ -228,8 +238,7 @@
                     <div id="qr-container" class="panel hidden text-center">
                         <h3 class="text-sm font-bold mb-2 text-slate-300">Verification Payload</h3>
                         <div class="bg-white p-4 inline-block rounded mb-2">
-                            <!-- Placeholder for QR, we use a simple text area for single-file limitations -->
-                            <div class="w-32 h-32 bg-slate-200 border-4 border-black flex items-center justify-center text-black font-bold text-xs">QR SIMULATOR</div>
+                            <div id="proof-qr"></div>
                         </div>
                         <textarea id="proof-output" class="w-full bg-slate-900 border border-slate-700 text-xs font-mono p-2 h-24 rounded mt-2" readonly></textarea>
                         <button class="btn-outline w-full mt-2 text-xs" onclick="navigator.clipboard.writeText(document.getElementById('proof-output').value)">Copy Proof Data</button>
@@ -271,15 +280,21 @@
                         </div>
                         <button type="submit" class="btn-primary w-full" id="btn-issue">Commit & Issue on BOT Chain</button>
                     </form>
+                    <div id="issued-box" class="hidden mt-6 border-t border-slate-700 pt-4">
+                        <h3 class="font-bold text-green-400 mb-2">Credential issued — send this to the holder</h3>
+                        <p class="text-xs text-yellow-500 mb-2">This file is the only copy of the credential's secret salt. ProofPass does not store it. Deliver it privately to the holder.</p>
+                        <textarea id="issued-output" class="w-full bg-slate-900 border border-slate-700 text-xs font-mono p-2 h-32 rounded" readonly></textarea>
+                        <div class="flex gap-2 mt-2">
+                            <button class="btn-outline flex-1 text-xs" onclick="navigator.clipboard.writeText(document.getElementById('issued-output').value)">Copy</button>
+                            <button class="btn-outline flex-1 text-xs" onclick="issuerLogic.downloadIssued()">Download .json</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="panel">
                     <h2 class="text-2xl font-bold mb-6">Manage Organization</h2>
                     <div class="bg-slate-800 p-4 rounded mb-6 border border-slate-700">
                         <p class="text-sm text-slate-400 mb-1">Issuer Registration Status</p>
-                        <div class="flex items-center justify-between">
-                            <span class="font-bold text-green-400 flex items-center"><span class="w-2 h-2 rounded-full bg-green-400 mr-2"></span> Registered on BOT Chain</span>
-                            <span class="text-xs font-mono text-slate-500">ID: BOT-ORG-992A</span>
-                        </div>
+                        <div id="issuer-status" class="flex items-center justify-between text-sm text-slate-400">Checking BOT Chain…</div>
                     </div>
                     
                     <h3 class="text-xl font-bold mb-4 border-t border-slate-700 pt-4">Revocation Registry</h3>
@@ -287,6 +302,18 @@
                     <div class="flex space-x-2">
                         <input type="text" id="revoke-hash" class="flex-1 bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Commitment Hash (0x...)">
                         <button class="btn-outline bg-red-900/20 border-red-500 text-red-400 hover:bg-red-500" onclick="issuerLogic.revoke()">Revoke</button>
+                    </div>
+
+                    <div id="admin-panel" class="hidden mt-6 border-t border-slate-700 pt-4">
+                        <h3 class="text-xl font-bold mb-2">Admin: Issuers</h3>
+                        <p class="text-sm text-slate-400 mb-3">Only the contract admin sees this.</p>
+                        <input type="text" id="admin-issuer-addr" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm mb-2" placeholder="Issuer wallet (0x...)">
+                        <input type="text" id="admin-issuer-name" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm mb-2" placeholder="Organisation name (for Register)">
+                        <div class="flex gap-2">
+                            <button class="btn-primary flex-1 text-sm" onclick="issuerLogic.registerIssuer()">Register</button>
+                            <button class="btn-outline flex-1 text-sm" onclick="issuerLogic.setIssuerStatus(true)">Activate</button>
+                            <button class="btn-outline flex-1 text-sm text-red-400" onclick="issuerLogic.setIssuerStatus(false)">Suspend</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -296,9 +323,9 @@
         <div id="role-verifier" class="hidden">
             <div class="max-w-2xl mx-auto panel">
                 <h2 class="text-2xl font-bold mb-2">Verify Credential Proof</h2>
-                <p class="text-slate-400 mb-6 text-sm">Paste a cryptographic proof payload provided by a credential holder to verify its authenticity, integrity, and non-revocation status against BOT Chain.</p>
+                <p class="text-slate-400 mb-6 text-sm">Paste a proof payload from a credential holder to check its integrity, the issuer, and revocation status on BOT Chain. No wallet needed.</p>
                 
-                <textarea id="verify-payload" class="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white font-mono text-xs h-32 mb-4" placeholder='{"type": "AgeProof", "commitment": "0x...", "proof": "..."}'></textarea>
+                <textarea id="verify-payload" class="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white font-mono text-xs h-32 mb-4" placeholder='{"type": "AgeRangeProof", "threshold": 18, "commitment": "0x...", "proofHash": "0x..."}'></textarea>
                 
                 <button class="btn-primary w-full py-3 text-lg" onclick="verifierLogic.verify()">Run Verification</button>
 
@@ -315,84 +342,24 @@
         <p class="text-slate-400 mb-6">The core Solidity architecture powering ProofPass. These contracts handle issuer whitelisting, credential commitments, and the revocation registry.</p>
         
         <div class="panel mb-8">
-            <h3 class="text-xl font-bold mb-4">ProofPassRegistry.sol</h3>
-<pre><code>// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+            <h3 class="text-xl font-bold mb-2">ProofPass Registry — BOT Chain Mainnet</h3>
+            <p class="text-sm text-slate-400 mb-4">Deployed at <a id="contract-link" class="font-mono text-blue-400 hover:underline break-all" target="_blank" rel="noopener"></a>. View the verified source on the explorer.</p>
+<pre><code>// Public interface used by this app
+address public admin;
+mapping(address =&gt; Issuer) public issuers;        // (string name, bool isAuthorized, bool exists)
+mapping(bytes32 =&gt; bool) public credentialCommitments;
+mapping(bytes32 =&gt; bool) public revokedCredentials;
 
-/**
- * @title ProofPassRegistry
- * @dev Manages Issuers, Credential Commitments, and Revocations on BOT Chain.
- * Privacy preservation is achieved by ONLY storing cryptographic hashes (commitments).
- */
-contract ProofPassRegistry {
-    address public admin;
+function registerIssuer(address _issuerAddress, string _name) external;   // onlyAdmin
+function setIssuerStatus(address _issuerAddress, bool _isAuthorized) external; // onlyAdmin
+function issueCredential(bytes32 _commitment) external;                   // authorised issuer
+function revokeCredential(bytes32 _commitment) external;                  // authorised issuer
+function isCredentialValid(bytes32 _commitment) external view returns (bool);
 
-    struct IssuerInfo {
-        bool isAuthorized;
-        string didDocument; // Decentralized Identifier document URI
-        uint256 registeredAt;
-    }
-
-    // Mappings
-    mapping(address => IssuerInfo) public issuers;
-    mapping(bytes32 => address) public credentialToIssuer;
-    mapping(bytes32 => bool) public isRevoked;
-
-    // Events
-    event IssuerAuthorized(address indexed issuer, string did);
-    event CredentialCommitted(bytes32 indexed commitment, address indexed issuer);
-    event CredentialRevoked(bytes32 indexed commitment);
-
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "ProofPass: Not admin");
-        _;
-    }
-
-    modifier onlyIssuer() {
-        require(issuers[msg.sender].isAuthorized, "ProofPass: Not authorized issuer");
-        _;
-    }
-
-    constructor() {
-        admin = msg.sender;
-    }
-
-    /**
-     * @dev Authorize a new credential issuer (e.g., a University or Gov body)
-     */
-    function authorizeIssuer(address _issuer, string memory _did) external onlyAdmin {
-        issuers[_issuer] = IssuerInfo(true, _did, block.timestamp);
-        emit IssuerAuthorized(_issuer, _did);
-    }
-
-    /**
-     * @dev Commit a credential to the chain. 
-     * @param commitment A cryptographic hash: hash(holderAddress + salt + claimData)
-     */
-    function commitCredential(bytes32 commitment) external onlyIssuer {
-        require(credentialToIssuer[commitment] == address(0), "ProofPass: Already exists");
-        credentialToIssuer[commitment] = msg.sender;
-        emit CredentialCommitted(commitment, msg.sender);
-    }
-
-    /**
-     * @dev Revoke a previously issued credential
-     */
-    function revokeCredential(bytes32 commitment) external onlyIssuer {
-        require(credentialToIssuer[commitment] == msg.sender, "ProofPass: Not your credential");
-        require(!isRevoked[commitment], "ProofPass: Already revoked");
-        
-        isRevoked[commitment] = true;
-        emit CredentialRevoked(commitment);
-    }
-
-    /**
-     * @dev Verifier function to check valid state
-     */
-    function isValid(bytes32 commitment) external view returns (bool) {
-        return (credentialToIssuer[commitment] != address(0)) && (!isRevoked[commitment]);
-    }
-}
+event IssuerRegistered(address indexed issuerAddress, string name);
+event IssuerStatusUpdated(address indexed issuerAddress, bool isAuthorized);
+event CredentialIssued(bytes32 indexed commitment, address indexed issuer);
+event CredentialRevoked(bytes32 indexed commitment, address indexed issuer);
 </code></pre>
         </div>
     </main>
@@ -417,178 +384,256 @@ contract ProofPassRegistry {
     </footer>
 
     <!-- JavaScript Application Logic -->
+    <!-- JavaScript Application Logic -->
     <script>
-        // --- Cryptography Engine (Vanilla JS Zero-Knowledge Simulation) ---
-        // Provides genuine hash-based proofs and commitments using Web Crypto API.
+        // ═══════════════ BOT Chain mainnet config ═══════════════
+        const CONTRACT_ADDRESS = '0xFEc9ff32369f7E36320655D4f4A81d5747b2D435';
+        const CHAIN_ID = 677;
+        const CHAIN_HEX = '0x2a5';
+        const RPC_URL = 'https://rpc.botchain.ai';
+        const EXPLORER = 'https://scan.botchain.ai';
+        const ABI = [
+            'function admin() view returns (address)',
+            'function issuers(address) view returns (string name, bool isAuthorized, bool exists)',
+            'function credentialCommitments(bytes32) view returns (bool)',
+            'function revokedCredentials(bytes32) view returns (bool)',
+            'function isCredentialValid(bytes32 _commitment) view returns (bool)',
+            'function registerIssuer(address _issuerAddress, string _name)',
+            'function setIssuerStatus(address _issuerAddress, bool _isAuthorized)',
+            'function issueCredential(bytes32 _commitment)',
+            'function revokeCredential(bytes32 _commitment)',
+            'event IssuerRegistered(address indexed issuerAddress, string name)',
+            'event IssuerStatusUpdated(address indexed issuerAddress, bool isAuthorized)',
+            'event CredentialIssued(bytes32 indexed commitment, address indexed issuer)',
+            'event CredentialRevoked(bytes32 indexed commitment, address indexed issuer)'
+        ];
+        const MAX_AGE = 150;
+
+        // Reads go straight to BOT Chain's RPC, so verifying works without a wallet
+        const readProvider = new ethers.providers.StaticJsonRpcProvider(RPC_URL, { chainId: CHAIN_ID, name: 'botchain' });
+        const registry = new ethers.Contract(CONTRACT_ADDRESS, ABI, readProvider);
+
+        // ═══════════════ Helpers ═══════════════
+        const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const short = a => a ? a.slice(0, 6) + '…' + a.slice(-4) : '';
+        const isHash = h => /^0x[0-9a-fA-F]{64}$/.test(h || '');
+        const withTimeout = (p, ms, msg) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
+        function errText(e) {
+            const m = (e && (e.error && e.error.message || e.reason || e.data && e.data.message || e.message)) || String(e);
+            const r = m.match(/reverted(?: with reason string)?:?\s*'?"?([^"'\n]+)/i);
+            return r ? r[1].trim() : m;
+        }
+        function notify(msg, ok) {
+            let el = document.getElementById('pp-toast');
+            if (!el) {
+                el = document.createElement('div'); el.id = 'pp-toast';
+                el.style.cssText = 'position:fixed;bottom:20px;right:20px;max-width:360px;padding:12px 16px;border-radius:8px;font-size:14px;z-index:100;box-shadow:0 8px 24px #0008';
+                document.body.appendChild(el);
+            }
+            el.textContent = msg;
+            el.style.background = ok === false ? '#7f1d1d' : ok ? '#14532d' : '#1e293b';
+            el.style.border = '1px solid #334155'; el.style.display = 'block';
+            clearTimeout(notify.t); notify.t = setTimeout(() => el.style.display = 'none', ok === false ? 7000 : 4000);
+        }
+
+        async function ensureChain() {
+            const id = parseInt(await window.ethereum.request({ method: 'eth_chainId' }), 16);
+            if (id === CHAIN_ID) return;
+            try {
+                await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_HEX }] });
+            } catch (e) {
+                if (e.code === 4902 || e.code === -32603 || /unrecognized|not been added/i.test(e.message || '')) {
+                    await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{ chainId: CHAIN_HEX, chainName: 'BOT Chain Mainnet', nativeCurrency: { name: 'BOT', symbol: 'BOT', decimals: 18 }, rpcUrls: [RPC_URL], blockExplorerUrls: [EXPLORER] }] });
+                } else throw e;
+            }
+        }
+
+        // Estimate on our own RPC (reverts show the contract's message), then hand the wallet a complete tx
+        let txBusy = false;
+        async function sendTx(fn, args) {
+            if (!appState.address) throw new Error('Connect your wallet first');
+            if (txBusy) throw new Error('Another transaction is still pending');
+            txBusy = true;
+            try {
+                await withTimeout(ensureChain(), 60000, 'Approve the switch to BOT Chain in your wallet');
+                const data = registry.interface.encodeFunctionData(fn, args);
+                let gas;
+                try { gas = await readProvider.estimateGas({ from: appState.address, to: CONTRACT_ADDRESS, data }); }
+                catch (e) { throw new Error(errText(e)); }
+                notify('Confirm the transaction in your wallet…');
+                const hash = await window.ethereum.request({
+                    method: 'eth_sendTransaction',
+                    params: [{ from: appState.address, to: CONTRACT_ADDRESS, data, gas: ethers.utils.hexValue(gas.mul(12).div(10)) }]
+                });
+                notify('Sent. Waiting for confirmation…');
+                const r = await readProvider.waitForTransaction(hash, 1, 180000);
+                if (!r || r.status !== 1) throw new Error('Transaction failed or not confirmed. Check ' + EXPLORER + '/tx/' + hash);
+                return hash;
+            } finally { txBusy = false; }
+        }
+
+        // Who committed a credential, and are they still authorised?
+        async function issuerOf(commitment) {
+            const logs = await registry.queryFilter(registry.filters.CredentialIssued(commitment), 0, 'latest')
+                .catch(async () => { const b = await readProvider.getBlockNumber(); return registry.queryFilter(registry.filters.CredentialIssued(commitment), Math.max(0, b - 50000), b); });
+            if (!logs.length) return null;
+            const addr = logs[0].args.issuer;
+            const info = await registry.issuers(addr);
+            return { address: addr, name: info.name, authorized: info.isAuthorized, tx: logs[0].transactionHash };
+        }
+
+        // ═══════════════ Cryptography ═══════════════
         const cryptoLib = {
             async sha256(message) {
-                const msgBuffer = new TextEncoder().encode(message);
-                const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-                const hashArray = Array.from(new Uint8Array(hashBuffer));
-                return '0x' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
+                return '0x' + Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
             },
-            
-            // Hash Chain for Age Proof (Genuine cryptographic technique)
-            // Generate chain: seed -> H1 -> H2 ... -> H_Max (Max = 100)
-            async generateAgeChain(seed, maxAge = 100) {
-                let current = seed;
-                const chain = [current];
-                for(let i = 0; i < maxAge; i++) {
-                    current = await this.sha256(current);
-                    chain.push(current);
-                }
-                return chain; // chain[0] = seed, chain[maxAge] = public commitment
+            async hashN(value, n) {
+                let v = value;
+                for (let i = 0; i < n; i++) v = await this.sha256(v);
+                return v;
             },
+            // Age hash chain. Commitment C = H^age(seed). To prove age >= t the holder reveals
+            // P = H^(age - t)(seed); the verifier checks H^t(P) == C. A holder younger than t would
+            // need to invert the hash, so the proof is impossible to forge. The seed never leaves the holder.
+            ageCommitment(seed, age) { return this.hashN(seed, age); },
+            ageProof(seed, age, threshold) { return this.hashN(seed, age - threshold); },
+            ownershipCommitment(holder, salt, data) { return this.sha256(holder.toLowerCase() + salt + JSON.stringify(data)); },
 
-            // Generate Proof
             async generateProof() {
                 const select = document.getElementById('proof-cred-select');
                 const type = document.getElementById('proof-type-select').value;
-                if(!select.value) return alert("Select a credential first");
+                if (!select.value) return notify('Select a credential first', false);
+                const cred = wallet.list().find(c => c.commitment === select.value);
+                let payload;
 
-                const cred = db.credentials.find(c => c.id === select.value);
-                
-                let proofPayload = {};
-                
                 if (type === 'ownership') {
-                    // Standard selective disclosure
-                    proofPayload = {
-                        type: "OwnershipProof",
-                        commitment: cred.commitment,
-                        data: cred.data,
-                        salt: cred.salt,
-                        holder: appState.address
-                    };
-                } else if (type === 'age18') {
-                    if (cred.data.type !== 'Age') return alert("Selected credential is not an Age credential");
-                    
-                    const actualAge = parseInt(cred.data.age);
-                    if (actualAge < 18) return alert("Cannot generate proof: Age is less than 18");
-                    
-                    // The secret is the hash at (100 - actualAge). To prove age >= 18, 
-                    // we need to provide the hash at (100 - 18) = 82.
-                    // We derive it from our secret seed.
-                    const chain = await this.generateAgeChain(cred.salt, 100);
-                    
-                    // We give the verifier the hash at position (100 - 18) = 82
-                    // Wait, if actual age is 25, we have the seed. The commitment is H_100.
-                    // We reveal H_{100 - actualAge + (actualAge - 18)} = H_{100 - 18} = H_82.
-                    // Actually, standard hash chain: 
-                    // Commitment C = H^100(seed). 
-                    // To prove Age >= X, reveal R = H^{100 - Age}(seed).
-                    // Verifier checks H^{X}(R) == C.
-                    // Wait, if we reveal H^{100 - Age}(seed), verifier computes H^{Age}(R) to get C. They know Age!
-                    // Correct approach: Prove Age >= 18.
-                    // Reveal R = H^{100 - actualAge}(seed). Wait, no.
-                    // We reveal R = H^{actualAge - 18}( H^{100 - actualAge}(seed) ).
-                    // So R = H^{100 - 18}(seed) = H^82(seed).
-                    // Verifier hashes R 18 times. H^18(H^82(seed)) = H^100(seed) = C.
-                    // Verifier checks H^18(R) == C. 
-                    // Does this reveal actualAge? No, because hashing is one-way. The verifier only sees H^82, they can't go backwards to find H^{100 - actualAge}.
-                    // Genuine ZK Range Proof using Hash Chains!
-                    
-                    const revealedHash = chain[100 - 18]; 
-                    
-                    proofPayload = {
-                        type: "AgeRangeProof",
-                        threshold: 18,
-                        commitment: cred.commitment,
-                        proofHash: revealedHash,
-                        issuer: cred.issuer
-                    };
+                    // Selective disclosure: reveals the credential data, bound to the holder by a fresh signature
+                    const signedAt = Math.floor(Date.now() / 1000);
+                    const message = `ProofPass ownership proof\nCommitment: ${cred.commitment}\nSigned at: ${signedAt}`;
+                    let signature;
+                    try {
+                        signature = await window.ethereum.request({ method: 'personal_sign', params: [ethers.utils.hexlify(ethers.utils.toUtf8Bytes(message)), appState.address] });
+                    } catch (e) { return notify('Signature rejected: ' + errText(e), false); }
+                    payload = { type: 'OwnershipProof', commitment: cred.commitment, data: cred.data, salt: cred.salt, holder: cred.holder, signedAt, signature };
+                } else {
+                    if (cred.data.type !== 'Age') return notify('Selected credential is not an Age credential', false);
+                    const threshold = 18;
+                    if (Number(cred.data.age) < threshold) return notify('This credential cannot prove age ≥ 18', false);
+                    payload = { type: 'AgeRangeProof', threshold, commitment: cred.commitment, proofHash: await this.ageProof(cred.salt, Number(cred.data.age), threshold) };
                 }
 
+                const text = JSON.stringify(payload);
                 document.getElementById('qr-container').classList.remove('hidden');
-                document.getElementById('proof-output').value = JSON.stringify(proofPayload, null, 2);
+                document.getElementById('proof-output').value = JSON.stringify(payload, null, 2);
+                const box = document.getElementById('proof-qr');
+                box.innerHTML = '';
+                if (window.QRCode && text.length < 2000) new QRCode(box, { text, width: 160, height: 160, correctLevel: QRCode.CorrectLevel.L });
+                else box.innerHTML = '<div class="w-32 h-32 flex items-center justify-center text-black text-xs text-center">Too large for a QR code — copy the text below</div>';
             }
         };
 
-        // --- Mock Local Database (Simulating Local Wallet Storage) ---
-        const db = {
-            credentials: [],
-            save(cred) { this.credentials.push(cred); this.render(); },
-            render() {
-                const list = document.getElementById('credentials-list');
-                list.innerHTML = '';
-                const select = document.getElementById('proof-cred-select');
-                select.innerHTML = '<option value="">Select Credential...</option>';
+        // ═══════════════ Holder wallet (credentials kept in this browser, per address) ═══════════════
+        const wallet = {
+            key() { return 'proofpass:' + (appState.address || '').toLowerCase(); },
+            list() { try { return JSON.parse(localStorage.getItem(this.key()) || '[]'); } catch { return []; } },
+            save(list) { try { localStorage.setItem(this.key(), JSON.stringify(list)); } catch {} },
 
-                if(this.credentials.length === 0) {
-                    list.innerHTML = '<div class="panel text-center text-slate-500">No credentials found in wallet.</div>';
+            async importCredential() {
+                const raw = document.getElementById('import-cred').value.trim();
+                if (!raw) return notify('Paste a credential first', false);
+                let c;
+                try { c = JSON.parse(raw); } catch { return notify('That is not valid credential JSON', false); }
+                if (!c.data || !c.salt || !isHash(c.commitment) || !ethers.utils.isAddress(c.holder || '')) return notify('Credential is missing fields', false);
+                if (c.holder.toLowerCase() !== appState.address.toLowerCase()) return notify('This credential was issued to ' + short(c.holder) + ', not your connected wallet', false);
+                // Check the credential actually matches its commitment before storing it
+                const expected = c.data.type === 'Age'
+                    ? await cryptoLib.ageCommitment(c.salt, Number(c.data.age))
+                    : await cryptoLib.ownershipCommitment(c.holder, c.salt, c.data);
+                if (expected !== c.commitment) return notify('Credential data does not match its commitment', false);
+                const list = this.list().filter(x => x.commitment !== c.commitment);
+                list.push(c); this.save(list);
+                document.getElementById('import-cred').value = '';
+                notify('Credential added to your wallet', true);
+                this.render();
+            },
+
+            remove(commitment) {
+                if (!confirm('Remove this credential from this browser? Keep a copy if you still need it.')) return;
+                this.save(this.list().filter(x => x.commitment !== commitment)); this.render();
+            },
+
+            async render() {
+                const list = document.getElementById('credentials-list');
+                const select = document.getElementById('proof-cred-select');
+                const creds = this.list();
+                select.innerHTML = '<option value="">Select Credential...</option>';
+                if (!creds.length) {
+                    list.innerHTML = '<div class="panel text-center text-slate-500">No credentials in this browser yet. Ask an issuer for your credential file and import it.</div>';
                     return;
                 }
-
-                this.credentials.forEach(c => {
-                    // List
-                    const div = document.createElement('div');
-                    div.className = 'panel flex justify-between items-center border-l-4 border-l-blue-500';
-                    div.innerHTML = `
+                list.innerHTML = creds.map(c => `
+                    <div class="panel flex justify-between items-center border-l-4 border-l-blue-500">
                         <div>
-                            <div class="text-xs text-blue-400 font-bold mb-1">${c.data.type.toUpperCase()} CREDENTIAL</div>
-                            <div class="font-bold text-lg">${c.data.type === 'Age' ? 'Age Verification' : c.data.name}</div>
-                            <div class="text-xs text-slate-500 font-mono mt-1">Commitment: ${c.commitment.substring(0,14)}...</div>
+                            <div class="text-xs text-blue-400 font-bold mb-1">${esc(String(c.data.type).toUpperCase())} CREDENTIAL</div>
+                            <div class="font-bold text-lg">${c.data.type === 'Age' ? 'Age Verification' : esc(c.data.name)}</div>
+                            <div class="text-xs text-slate-500 font-mono mt-1">Commitment: ${c.commitment.substring(0, 14)}...</div>
+                            <div class="text-xs mt-1" id="st-${c.commitment}">Checking BOT Chain…</div>
                         </div>
                         <div class="text-right">
                             <div class="text-xs text-slate-400">Issuer</div>
-                            <div class="text-xs font-mono bg-slate-800 px-2 py-1 rounded mt-1">${c.issuer.substring(0,10)}...</div>
+                            <div class="text-xs font-mono bg-slate-800 px-2 py-1 rounded mt-1">${short(c.issuer)}</div>
+                            <button class="text-xs text-slate-500 hover:text-red-400 mt-2" onclick="wallet.remove('${c.commitment}')">Remove</button>
                         </div>
-                    `;
-                    list.appendChild(div);
-
-                    // Select
+                    </div>`).join('');
+                creds.forEach(c => {
                     const opt = document.createElement('option');
-                    opt.value = c.id;
-                    opt.textContent = `${c.data.type} - ${c.commitment.substring(0,10)}...`;
+                    opt.value = c.commitment;
+                    opt.textContent = `${c.data.type} - ${c.commitment.substring(0, 10)}...`;
                     select.appendChild(opt);
+                });
+                // Live on-chain status for each credential
+                creds.forEach(async c => {
+                    const el = document.getElementById('st-' + c.commitment);
+                    try {
+                        const [exists, revoked] = await Promise.all([registry.credentialCommitments(c.commitment), registry.revokedCredentials(c.commitment)]);
+                        el.innerHTML = revoked ? '<span class="text-red-400">● Revoked</span>' : exists ? '<span class="text-green-400">● Valid on BOT Chain</span>' : '<span class="text-yellow-400">● Not found on-chain</span>';
+                    } catch { el.textContent = 'Could not reach BOT Chain'; }
                 });
             }
         };
 
-        // --- Simulated Smart Contract State ---
-        const contractState = {
-            commitments: {}, // hash -> { issuer, revoked }
-            registerCommitment(hash, issuer) {
-                this.commitments[hash] = { issuer, revoked: false };
-                console.log("BOT Chain Tx: Commit", hash);
-            },
-            revokeCommitment(hash) {
-                if(this.commitments[hash]) this.commitments[hash].revoked = true;
-                console.log("BOT Chain Tx: Revoke", hash);
-            },
-            isValid(hash) {
-                const record = this.commitments[hash];
-                return record && !record.revoked;
-            }
-        };
-
-        // --- Application State & Navigation ---
+        // ═══════════════ Application State & Navigation ═══════════════
         const appState = {
             address: null,
             role: 'holder',
-            
+            isAdmin: false,
+
             navigate(view) {
-                document.getElementById('view-landing').classList.add('hidden');
-                document.getElementById('view-dashboard').classList.add('hidden');
-                document.getElementById('view-contracts').classList.add('hidden');
+                ['landing', 'dashboard', 'contracts'].forEach(v => document.getElementById(`view-${v}`).classList.add('hidden'));
                 document.getElementById(`view-${view}`).classList.remove('hidden');
             },
 
-            async connectWallet() {
+            async connectWallet(silent) {
+                if (!window.ethereum) { if (!silent) notify('Install MetaMask or another BOT Chain wallet to continue', false); return; }
                 try {
-                    // Mock ethers connection for single file demo
-                    // In production: await window.ethereum.request({ method: 'eth_requestAccounts' });
-                    const randomWallet = ethers.Wallet.createRandom();
-                    this.address = randomWallet.address;
-                    
+                    const accounts = await withTimeout(
+                        window.ethereum.request({ method: silent ? 'eth_accounts' : 'eth_requestAccounts' }),
+                        silent ? 5000 : 60000, 'Wallet did not respond. Open it from the toolbar and clear pending requests.');
+                    if (!accounts || !accounts.length) return;
+                    this.address = ethers.utils.getAddress(accounts[0]);
+
                     document.getElementById('nav-links').classList.add('hidden');
                     document.getElementById('nav-dashboard').classList.remove('hidden');
-                    document.getElementById('wallet-address').innerText = this.address.substring(0, 6) + '...' + this.address.substring(38);
-                    
+                    document.getElementById('wallet-address').innerText = short(this.address);
+                    if (window.ethereum.on && !this._listening) { this._listening = true; window.ethereum.on('accountsChanged', () => location.reload()); }
+
                     this.navigate('dashboard');
                     this.setRole('holder');
-                } catch(e) {
-                    alert("Wallet connection failed.");
-                }
+                    wallet.render();
+                    issuerLogic.loadStatus();
+                    if (!silent) withTimeout(ensureChain(), 60000, 'switch').catch(() => notify('Switch your wallet to BOT Chain (677) before sending transactions', false));
+                } catch (e) { if (!silent) notify('Wallet connection failed: ' + errText(e), false); }
             },
 
             disconnect() {
@@ -606,7 +651,6 @@ contract ProofPassRegistry {
                     tab.classList.remove('text-blue-500', 'border-b-2', 'border-blue-500');
                     tab.classList.add('text-slate-400');
                 });
-                
                 document.getElementById(`role-${role}`).classList.remove('hidden');
                 const activeTab = document.getElementById(`tab-${role}`);
                 activeTab.classList.remove('text-slate-400');
@@ -614,127 +658,163 @@ contract ProofPassRegistry {
             }
         };
 
-        // --- Issuer Logic ---
+        // ═══════════════ Issuer Logic ═══════════════
         const issuerLogic = {
             toggleTypeFields() {
                 const type = document.getElementById('issue-type').value;
-                document.getElementById('field-degree').classList.add('hidden');
-                document.getElementById('field-age').classList.add('hidden');
-                if (type === 'Degree' || type === 'Membership') document.getElementById('field-degree').classList.remove('hidden');
-                if (type === 'Age') document.getElementById('field-age').classList.remove('hidden');
+                document.getElementById('field-degree').classList.toggle('hidden', type === 'Age');
+                document.getElementById('field-age').classList.toggle('hidden', type !== 'Age');
+            },
+
+            async loadStatus() {
+                const box = document.getElementById('issuer-status');
+                try {
+                    const [info, admin] = await Promise.all([registry.issuers(appState.address), registry.admin()]);
+                    appState.isAdmin = admin.toLowerCase() === appState.address.toLowerCase();
+                    document.getElementById('admin-panel').classList.toggle('hidden', !appState.isAdmin);
+                    box.innerHTML = info.isAuthorized
+                        ? `<span class="font-bold text-green-400 flex items-center"><span class="w-2 h-2 rounded-full bg-green-400 mr-2"></span> Authorised issuer: ${esc(info.name)}</span>`
+                        : info.exists
+                            ? `<span class="font-bold text-yellow-400 flex items-center"><span class="w-2 h-2 rounded-full bg-yellow-400 mr-2"></span> ${esc(info.name)} — suspended by admin</span>`
+                            : `<span class="font-bold text-slate-400 flex items-center"><span class="w-2 h-2 rounded-full bg-slate-500 mr-2"></span> Not an issuer. Ask the ProofPass admin to register this wallet.</span>`;
+                } catch (e) { box.textContent = 'Could not reach BOT Chain: ' + errText(e); }
             },
 
             async issueCredential() {
                 const btn = document.getElementById('btn-issue');
-                btn.innerHTML = '<span class="loader"></span> Committing...';
-                
-                const holder = document.getElementById('issue-holder').value;
+                const holder = document.getElementById('issue-holder').value.trim();
                 const type = document.getElementById('issue-type').value;
-                
-                // Generate secure random salt
-                const salt = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
-                
-                let data = { type };
-                let commitment = "";
+                if (!ethers.utils.isAddress(holder)) return notify('Enter a valid holder address', false);
 
+                const salt = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('');
+                const data = { type };
+                let commitment;
                 if (type === 'Age') {
-                    data.age = document.getElementById('issue-age-val').value;
-                    if(!data.age) return alert("Enter age");
-                    
-                    // Hash chain commitment (Salt is the seed)
-                    const chain = await cryptoLib.generateAgeChain(salt, 100);
-                    commitment = chain[100]; // H^100(seed) is the public commitment
+                    const age = parseInt(document.getElementById('issue-age-val').value, 10);
+                    if (!(age >= 1 && age <= MAX_AGE)) return notify(`Enter an age between 1 and ${MAX_AGE}`, false);
+                    data.age = age;
+                    commitment = await cryptoLib.ageCommitment(salt, age);
                 } else {
-                    data.name = document.getElementById('issue-deg-name').value;
-                    // Standard commitment: Hash(holder + salt + data)
-                    commitment = await cryptoLib.sha256(holder + salt + JSON.stringify(data));
+                    data.name = document.getElementById('issue-deg-name').value.trim();
+                    if (!data.name) return notify('Enter the credential name', false);
+                    commitment = await cryptoLib.ownershipCommitment(holder, salt, data);
                 }
 
-                // Simulate BOT Chain Tx
-                setTimeout(() => {
-                    contractState.registerCommitment(commitment, appState.address);
-                    
-                    // Issue to holder wallet (Simulated offchain transfer)
-                    const cred = { id: Date.now().toString(), issuer: appState.address, holder, data, salt, commitment };
-                    db.save(cred);
-
-                    btn.innerHTML = 'Commit & Issue on BOT Chain';
-                    alert(`Credential Issued!\nCommitment Tx: ${commitment}`);
+                btn.disabled = true; btn.innerHTML = '<span class="loader"></span> Committing...';
+                try {
+                    const hash = await sendTx('issueCredential', [commitment]);
+                    const cred = { version: 1, network: 'botchain-677', contract: CONTRACT_ADDRESS, issuer: appState.address, holder: ethers.utils.getAddress(holder), data, salt, commitment, issuedTx: hash };
+                    const out = JSON.stringify(cred, null, 2);
+                    document.getElementById('issued-output').value = out;
+                    document.getElementById('issued-box').classList.remove('hidden');
+                    notify('Credential committed on BOT Chain. Send the credential file to the holder.', true);
                     document.getElementById('issue-holder').value = '';
-                }, 1000);
+                } catch (e) { notify('Issue failed: ' + errText(e), false); }
+                finally { btn.disabled = false; btn.innerHTML = 'Commit & Issue on BOT Chain'; }
             },
 
-            revoke() {
-                const hash = document.getElementById('revoke-hash').value;
-                if(!hash) return;
-                contractState.revokeCommitment(hash);
-                alert("Revocation transaction broadcasted to BOT Chain.");
+            downloadIssued() {
+                const text = document.getElementById('issued-output').value;
+                const c = JSON.parse(text);
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+                a.download = `proofpass-${c.data.type.toLowerCase()}-${c.commitment.slice(2, 10)}.json`;
+                a.click(); URL.revokeObjectURL(a.href);
+            },
+
+            async revoke() {
+                const hash = document.getElementById('revoke-hash').value.trim();
+                if (!isHash(hash)) return notify('Enter a commitment hash (0x + 64 hex characters)', false);
+                if (!confirm('Revoke this credential permanently? This cannot be undone.')) return;
+                try { await sendTx('revokeCredential', [hash]); notify('Credential revoked', true); document.getElementById('revoke-hash').value = ''; }
+                catch (e) { notify('Revoke failed: ' + errText(e), false); }
+            },
+
+            async registerIssuer() {
+                const addr = document.getElementById('admin-issuer-addr').value.trim();
+                const name = document.getElementById('admin-issuer-name').value.trim();
+                if (!ethers.utils.isAddress(addr) || !name) return notify('Enter the issuer wallet and organisation name', false);
+                try { await sendTx('registerIssuer', [addr, name]); notify('Issuer registered', true); }
+                catch (e) { notify('Register failed: ' + errText(e), false); }
+            },
+
+            async setIssuerStatus(authorized) {
+                const addr = document.getElementById('admin-issuer-addr').value.trim();
+                if (!ethers.utils.isAddress(addr)) return notify('Enter the issuer wallet', false);
+                try { await sendTx('setIssuerStatus', [addr, authorized]); notify(authorized ? 'Issuer re-activated' : 'Issuer suspended', true); }
+                catch (e) { notify('Update failed: ' + errText(e), false); }
             }
         };
 
-        // --- Verifier Logic ---
+        // ═══════════════ Verifier Logic (works without a wallet) ═══════════════
         const verifierLogic = {
             async verify() {
-                const payloadStr = document.getElementById('verify-payload').value;
                 const resDiv = document.getElementById('verify-result');
                 resDiv.classList.remove('hidden', 'bg-green-900/30', 'border-green-500', 'bg-red-900/30', 'border-red-500');
-                
+                resDiv.innerHTML = '<span class="loader"></span> Verifying against BOT Chain…';
+
+                let payload;
+                try { payload = JSON.parse(document.getElementById('verify-payload').value); }
+                catch { return this.show(false, ['Invalid JSON payload.']); }
+                if (!isHash(payload.commitment)) return this.show(false, ['Missing or malformed commitment.']);
+
+                const lines = [];
+                let ok = false;
                 try {
-                    const payload = JSON.parse(payloadStr);
-                    let isValidCryptographically = false;
-                    let message = "";
-
-                    // 1. Verify Cryptographic Proof
-                    if (payload.type === "OwnershipProof") {
-                        const computedCommit = await cryptoLib.sha256(payload.holder + payload.salt + JSON.stringify(payload.data));
-                        isValidCryptographically = (computedCommit === payload.commitment);
-                        message = isValidCryptographically ? `Ownership mathematically verified for ${payload.data.type}.` : "Cryptographic mismatch!";
-                    } 
-                    else if (payload.type === "AgeRangeProof") {
-                        // Verifier hashes the proofHash exactly 'threshold' times
-                        let computed = payload.proofHash;
-                        for(let i=0; i < payload.threshold; i++) {
-                            computed = await cryptoLib.sha256(computed);
-                        }
-                        isValidCryptographically = (computed === payload.commitment);
-                        message = isValidCryptographically ? `Zero-Knowledge Range Proof Valid: Subject is >= ${payload.threshold} years old.` : "ZK Proof failed!";
-                    }
-
-                    // 2. Verify BOT Chain Status (Revocation & Existence)
-                    const isRegistered = contractState.isValid(payload.commitment);
-
-                    if (isValidCryptographically && isRegistered) {
-                        resDiv.classList.add('bg-green-900/30', 'border-green-500');
-                        resDiv.innerHTML = `
-                            <div class="flex items-center text-green-400 font-bold mb-2">
-                                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                Verification Successful
-                            </div>
-                            <ul class="text-sm text-green-200/80 space-y-1 ml-8 list-disc">
-                                <li>Cryptographic Integrity: Verified</li>
-                                <li>BOT Chain Registry: Verified</li>
-                                <li>Revocation Status: Not Revoked</li>
-                                <li>${message}</li>
-                            </ul>
-                        `;
+                    if (payload.type === 'OwnershipProof') {
+                        const computed = await cryptoLib.ownershipCommitment(payload.holder || '', payload.salt || '', payload.data);
+                        const integrity = computed === payload.commitment;
+                        const message = `ProofPass ownership proof\nCommitment: ${payload.commitment}\nSigned at: ${payload.signedAt}`;
+                        let signer = null;
+                        try { signer = ethers.utils.verifyMessage(message, payload.signature); } catch {}
+                        const signedByHolder = !!signer && signer.toLowerCase() === String(payload.holder).toLowerCase();
+                        const ageMin = Math.round((Date.now() / 1000 - Number(payload.signedAt)) / 60);
+                        lines.push(`Data matches commitment: ${integrity ? 'yes' : 'NO'}`);
+                        lines.push(`Signed by holder ${short(payload.holder)}: ${signedByHolder ? 'yes' : 'NO'} (signed ${ageMin} min ago)`);
+                        if (signedByHolder && ageMin > 15) lines.push('⚠ Signature is older than 15 minutes; ask the holder for a fresh proof.');
+                        lines.push(`Disclosed: ${esc(payload.data && payload.data.type)} — ${esc(payload.data && (payload.data.name || ('age ' + payload.data.age)))}`);
+                        ok = integrity && signedByHolder;
+                    } else if (payload.type === 'AgeRangeProof') {
+                        const t = Number(payload.threshold);
+                        if (!(t >= 1 && t <= MAX_AGE) || !isHash(payload.proofHash)) return this.show(false, ['Malformed age proof.']);
+                        const computed = await cryptoLib.hashN(payload.proofHash, t);
+                        ok = computed === payload.commitment;
+                        lines.push(ok ? `Hash-chain range proof valid: subject is at least ${t} years old.` : 'Hash-chain proof does not match the commitment.');
+                        lines.push('Note: age proofs are bearer proofs — anyone holding this payload can present it.');
                     } else {
-                        resDiv.classList.add('bg-red-900/30', 'border-red-500');
-                        resDiv.innerHTML = `
-                            <div class="flex items-center text-red-400 font-bold mb-2">
-                                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                Verification Failed
-                            </div>
-                            <div class="text-sm text-red-200/80 ml-8">
-                                ${!isValidCryptographically ? 'Cryptographic proof is invalid or malformed.' : 'Credential commitment not found on BOT Chain or has been revoked by issuer.'}
-                            </div>
-                        `;
+                        return this.show(false, ['Unknown proof type.']);
                     }
-                } catch(e) {
-                    alert("Invalid JSON payload.");
+
+                    const [valid, exists, revoked, issuer] = await Promise.all([
+                        registry.isCredentialValid(payload.commitment),
+                        registry.credentialCommitments(payload.commitment),
+                        registry.revokedCredentials(payload.commitment),
+                        issuerOf(payload.commitment)
+                    ]);
+                    lines.push(`Committed on BOT Chain: ${exists ? 'yes' : 'NO'}`);
+                    lines.push(`Revocation status: ${revoked ? 'REVOKED' : 'not revoked'}`);
+                    if (issuer) lines.push(`Issued by: ${esc(issuer.name || short(issuer.address))} (${short(issuer.address)})${issuer.authorized ? '' : ' — ⚠ issuer is currently suspended'}`);
+                    ok = ok && valid && (!issuer || issuer.authorized);
+                } catch (e) {
+                    return this.show(false, ['Could not reach BOT Chain: ' + esc(errText(e))]);
                 }
+                this.show(ok, lines);
+            },
+
+            show(ok, lines) {
+                const resDiv = document.getElementById('verify-result');
+                resDiv.classList.remove('hidden');
+                resDiv.classList.add(ok ? 'bg-green-900/30' : 'bg-red-900/30', ok ? 'border-green-500' : 'border-red-500');
+                resDiv.innerHTML = `
+                    <div class="flex items-center ${ok ? 'text-green-400' : 'text-red-400'} font-bold mb-2">${ok ? '✓ Verification Successful' : '✗ Verification Failed'}</div>
+                    <ul class="text-sm ${ok ? 'text-green-200/80' : 'text-red-200/80'} space-y-1 ml-6 list-disc">${lines.map(l => `<li>${l}</li>`).join('')}</ul>`;
             }
         };
 
+        // ═══════════════ Boot ═══════════════
+        document.getElementById('contract-link').href = `${EXPLORER}/address/${CONTRACT_ADDRESS}`;
+        document.getElementById('contract-link').textContent = CONTRACT_ADDRESS;
+        if (window.ethereum) appState.connectWallet(true);
     </script>
 </body>
 </html>
